@@ -14,9 +14,13 @@ class GAN():
         self.IM_SIZE = 256
         self.CHANNELS = 3
         self.IM_SHAPE = (self.IM_SIZE, self.IM_SIZE, self.CHANNELS)
-        self.IMAGE_TO_TEST = cv2.imread(r'C:\Users\Rufina\Desktop\thesis\cGAN\data\Image\00000850\day\20151101_165511.jpg')
-        self.IMAGE_TO_TEST = cv2.resize(self.IMAGE_TO_TEST, (self.IM_SIZE,self.IM_SIZE))
-        self.DATA_FOLDER = r'C:\Users\Rufina\Desktop\thesis\cGAN\data\Image\\'
+#         self.IMAGE_TO_TEST = cv2.imread(r'C:\Users\Rufina\Desktop\thesis\cGAN\data\Image\00000850\day\20151101_165511.jpg')
+#         self.IMAGE_TO_TEST = cv2.resize(self.IMAGE_TO_TEST, (self.IM_SIZE,self.IM_SIZE))
+#         self.DATA_FOLDER = r'C:\Users\Rufina\Desktop\thesis\cGAN\data\Image\\'
+
+        self.DATA_FOLDER = '/content/gdrive/My Drive/Colab Notebooks/THESIS/cGAN/data/Image/'
+        self.IMAGE_TO_TEST = cv.imread(f'{DATA_FOLDER}00000850/day/20151101_165511.jpg')
+        self.IMAGE_TO_TEST = cv.resize(IMAGE_TO_TEST, (IM_SIZE, IM_SIZE))
         
         with open('day_paths.pickle', 'rb') as f:
             self.DAY_PATH = pickle.load(f)
@@ -90,17 +94,17 @@ class GAN():
         G.add(Conv2DTranspose(filters=512, kernel_size=2, strides=(2,2)))
         G.add(BatchNormalization())
         G.add(ReLU())
-        #G.add(Dropout(0.5))
+        G.add(Dropout(0.5))
         
         G.add(Conv2DTranspose(filters=512, kernel_size=2, strides=(2,2)))
         G.add(BatchNormalization())
         G.add(ReLU())
-        #G.add(Dropout(0.5))
+        G.add(Dropout(0.5))
         
         G.add(Conv2DTranspose(filters=512, kernel_size=2, strides=(2,2)))
         G.add(BatchNormalization())
         G.add(ReLU())
-        #G.add(Dropout(0.5))
+        G.add(Dropout(0.5))
         
         G.add(Conv2DTranspose(filters=512, kernel_size=2, strides=(2,2)))
         G.add(BatchNormalization())
@@ -110,17 +114,17 @@ class GAN():
         G.add(Conv2DTranspose(filters=256, kernel_size=2, strides=(2,2)))
         G.add(BatchNormalization())
         G.add(ReLU())
-        #G.add(Dropout(0.5))
+        G.add(Dropout(0.5))
         
         G.add(Conv2DTranspose(filters=128, kernel_size=2, strides=(2,2)))
         G.add(BatchNormalization())
         G.add(ReLU())
-        #G.add(Dropout(0.5))
+        G.add(Dropout(0.5))
         
         G.add(Conv2DTranspose(filters=64, kernel_size=2, strides=(2,2)))
         G.add(BatchNormalization())
         G.add(ReLU())
-        #G.add(Dropout(0.5))
+        G.add(Dropout(0.5))
         
         G.add(Conv2DTranspose(filters=3, kernel_size=2, strides=(2,2), activation='tanh'))
         
@@ -156,6 +160,7 @@ class GAN():
         D.add(BatchNormalization())
         
         D.add( Conv2D(filters=1, kernel_size=2, strides=(2,2), activation='sigmoid')) 
+        D.add(Reshape((-1,)))
         
         image = Input(shape=self.IM_SHAPE)
         validity = D(image)
@@ -172,22 +177,33 @@ class GAN():
              yield day, night
 
     def train(self, epochs):
+        N = len(self.DAY_PATH)
         for epoch in range(epochs):
             D_LOSS, G_LOSS = 0.,0.
             #SGD
-            for day, night in self.Batch(self.DAY_PATH, self.NIGHT_PATH):
+            for d, n in self.Batch(self.DAY_PATH, self.NIGHT_PATH):
+                   #day, night = d/255, n/255
+                   day, night = (d - 127.5) / 127.5, (n - 127.5) / 127.5
                    gen_imgs = self.generator.predict(day[np.newaxis,:])
-                   d_loss_real = self.discriminator.train_on_batch(night[np.newaxis,:], np.ones((1,1,1, 1)))
-                   d_loss_fake = self.discriminator.train_on_batch(gen_imgs, np.zeros((1,1,1, 1)))
+                   d_loss_real = self.discriminator.train_on_batch(night[np.newaxis,:], np.ones((1,1)))
+                   d_loss_fake = self.discriminator.train_on_batch(gen_imgs, np.zeros((1,1)))
                    d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-                   g_loss = self.combined.train_on_batch(day[np.newaxis,:], np.ones((1,1,1, 1)))
+                   g_loss = self.combined.train_on_batch(day[np.newaxis,:], np.ones((1, 1)))
                    
                    D_LOSS += d_loss
                    G_LOSS += g_loss
-               
+            print(f'epoch: {epoch}, D_LOSS: {D_LOSS/N}, G_LOSS: {G_LOSS} ')
+            
+#             if epoch%10== 0:
+            img = self.generator.predict(self.IMAGE_TO_TEST[np.newaxis,:])
+            cv2.imwrite(f'{epoch}.jpg',img[0]* 127.5+ 127.5)
+            
+        img = self.generator.predict(self.IMAGE_TO_TEST[np.newaxis,:])
+        plt.imshow(img[0]* 127.5+ 127.5)
+             
                
 
 
 if __name__ == '__main__':
     gan = GAN()
-    gan.train(epochs=30)
+    gan.train(epochs=500)
