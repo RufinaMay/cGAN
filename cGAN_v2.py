@@ -12,14 +12,14 @@ class GAN():
         self.IM_SIZE = 256
         self.CHANNELS = 3
         self.IM_SHAPE = (self.IM_SIZE, self.IM_SIZE, self.CHANNELS)
-#         self.IMAGE_TO_TEST = cv2.imread(r'C:\Users\Rufina\Desktop\thesis\cGAN\data\Image\00000850\day\20151101_165511.jpg')
-#         self.IMAGE_TO_TEST = cv2.resize(self.IMAGE_TO_TEST, (self.IM_SIZE,self.IM_SIZE))
-#         self.DATA_FOLDER = r'C:\Users\Rufina\Desktop\thesis\cGAN\data\Image\\'
-       
+        self.IMAGE_TO_TEST = cv2.imread('data/Image/00000850/day/20151101_165511.jpg')
+        self.IMAGE_TO_TEST = cv2.resize(self.IMAGE_TO_TEST, (self.IM_SIZE,self.IM_SIZE))
+        self.DATA_FOLDER = r'data/Image/'
+        """
         self.DATA_FOLDER = '/content/gdrive/My Drive/Colab Notebooks/THESIS/cGAN/data/Image/'
         self.IMAGE_TO_TEST = cv2.imread(f'{self.DATA_FOLDER}00000850/day/20151101_165511.jpg')
         self.IMAGE_TO_TEST = cv2.resize(self.IMAGE_TO_TEST, (self.IM_SIZE, self.IM_SIZE))
-    
+        """
         with open('day_paths.pickle', 'rb') as f:
             self.DAY_PATH = pickle.load(f)
         with open('night_paths.pickle', 'rb') as f:
@@ -199,7 +199,6 @@ class GAN():
                    G_LOSS += g_loss
             print(f'epoch: {epoch}, D_LOSS: {D_LOSS/N}, G_LOSS: {G_LOSS} ')
             
-            print("okay")
             img = self.image_normalization_mapping(self.IMAGE_TO_TEST, 0, 255, -1, 1)
             img = self.generator.predict(img[np.newaxis,:])
             img = self.image_normalization_mapping(img[0], -1, 1, 0, 255).astype('uint8')
