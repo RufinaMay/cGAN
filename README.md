@@ -1,2 +1,2 @@
 # cGAN
-Conditional GAN for Day to Night 
+Conditional GAN for Day to Night translation
