@@ -1,0 +1,11 @@
+# training parameters
+BATCH_SIZE = 100
+LR = 0.0002
+EPOCHS = 20
+LATENT_SIZE = 10
+LAMBDA = 100
+EPOCHS = 150
+IM_CHANNEL = 3
+IM_SIZE = 256
+DATA_FOLDER = '../data/Image/'
+ALPHA_LEACKY_RELU = 0.2
