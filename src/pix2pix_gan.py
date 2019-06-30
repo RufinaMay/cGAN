@@ -3,9 +3,8 @@ from matplotlib import pyplot as plt
 import tensorflow as tf
 import cv2
 import pickle
-from constants import LAMBDA, EPOCHS, IM_CHANNEL, IM_SIZE, DATA_FOLDER, \
-    ALPHA_LEACKY_RELU
-import time
+from constants import LAMBDA, EPOCHS, INP_CHANNEL, OUT_CHANNEL, IM_SIZE, \
+    DATA_FOLDER, ALPHA_LEACKY_RELU, LEARNING_RATE, BETA_1, DROPOUT_PROBA
 
 # READ IMAGES HERE
 with open('../day_paths.pickle', 'rb') as f:
@@ -20,6 +19,12 @@ tar = cv2.resize(tar, (IM_SIZE, IM_SIZE))
 
 
 def Batch(day_paths, night_paths):
+    """
+    Creates batches of images.
+    :param day_paths: path to days data
+    :param night_paths: path to nights data
+    :return: day - night pairs
+    """
     N = len(day_paths)
     for i in range(N):
         day = cv2.imread(f'{DATA_FOLDER}{day_paths[i]}')
@@ -42,6 +47,14 @@ def image_normalization_mapping(image, from_min, from_max, to_min, to_max):
 
 
 def upsample(filters, size, apply_dropout=False):
+    """
+    Assemble upsampling layer
+    :param filters: the dimensionality of the output space
+    :param size: An integer or tuple/list of 2 integers, specifying
+    the height and width of the 2D convolution window.
+    :param apply_dropout:
+    :return: one upsampling layer
+    """
     initializer = tf.random_normal_initializer(0., 0.02)
 
     result = tf.keras.Sequential()
@@ -54,7 +67,7 @@ def upsample(filters, size, apply_dropout=False):
     result.add(tf.keras.layers.BatchNormalization())
 
     if apply_dropout:
-        result.add(tf.keras.layers.Dropout(0.5))
+        result.add(tf.keras.layers.Dropout(DROPOUT_PROBA))
 
     result.add(tf.keras.layers.ReLU())
 
@@ -62,6 +75,14 @@ def upsample(filters, size, apply_dropout=False):
 
 
 def downsample(filters, size, apply_batchnorm=True):
+    """
+    Assemble downsampling layer
+    :param filters: the dimensionality of the output space
+    :param size: An integer or tuple/list of 2 integers, specifying
+    the height and width of the 2D convolution window.
+    :param apply_batchnorm:
+    :return:
+    """
     initializer = tf.random_normal_initializer(0., 0.02)
 
     result = tf.keras.Sequential()
@@ -78,30 +99,35 @@ def downsample(filters, size, apply_batchnorm=True):
 
 
 def Generator():
+    """
+    Assemble generator model. Trained to generate real
+    looking images.
+    :return: generator model
+    """
     down_stack = [
-        downsample(64, 4, apply_batchnorm=False),  # (bs, 128, 128, 64)
-        downsample(128, 4),  # (bs, 64, 64, 128)
-        downsample(256, 4),  # (bs, 32, 32, 256)
-        downsample(512, 4),  # (bs, 16, 16, 512)
-        downsample(512, 4),  # (bs, 8, 8, 512)
-        downsample(512, 4),  # (bs, 4, 4, 512)
-        downsample(512, 4),  # (bs, 2, 2, 512)
-        downsample(512, 4),  # (bs, 1, 1, 512)
+        downsample(64, 4, apply_batchnorm=False),
+        downsample(128, 4),
+        downsample(256, 4),
+        downsample(512, 4),
+        downsample(512, 4),
+        downsample(512, 4),
+        downsample(512, 4),
+        downsample(512, 4)
     ]
 
     up_stack = [
-        upsample(512, 4, apply_dropout=True),  # (bs, 2, 2, 1024)
-        upsample(512, 4, apply_dropout=True),  # (bs, 4, 4, 1024)
-        upsample(512, 4, apply_dropout=True),  # (bs, 8, 8, 1024)
-        upsample(512, 4),  # (bs, 16, 16, 1024)
-        upsample(256, 4),  # (bs, 32, 32, 512)
-        upsample(128, 4),  # (bs, 64, 64, 256)
-        upsample(64, 4),  # (bs, 128, 128, 128)
+        upsample(512, 4, apply_dropout=True),
+        upsample(512, 4, apply_dropout=True),
+        upsample(512, 4, apply_dropout=True),
+        upsample(512, 4),
+        upsample(256, 4),
+        upsample(128, 4),
+        upsample(64, 4)
     ]
 
     initializer = tf.random_normal_initializer(0., 0.02)
 
-    last = tf.keras.layers.Conv2DTranspose(IM_CHANNEL, 4,
+    last = tf.keras.layers.Conv2DTranspose(OUT_CHANNEL, 4,
                                            strides=2,
                                            padding='same',
                                            kernel_initializer=initializer,
@@ -109,7 +135,7 @@ def Generator():
 
     concat = tf.keras.layers.Concatenate()
 
-    inputs = tf.keras.layers.Input(shape=[None, None, 3])
+    inputs = tf.keras.layers.Input(shape=[None, None, INP_CHANNEL])
     x = inputs
 
     # Downsampling through the model
@@ -131,20 +157,24 @@ def Generator():
 
 
 def Discriminator():
+    """
+    Assemble discriminator model. Trained to discriminate between
+    real and fake images.
+    """
     initializer = tf.random_normal_initializer(0., 0.02)
 
-    inp = tf.keras.layers.Input(shape=[None, None, IM_CHANNEL],
+    inp = tf.keras.layers.Input(shape=[None, None, INP_CHANNEL],
                                 name='input_image')
-    tar = tf.keras.layers.Input(shape=[None, None, IM_CHANNEL],
+    tar = tf.keras.layers.Input(shape=[None, None, OUT_CHANNEL],
                                 name='target_image')
 
-    x = tf.keras.layers.concatenate([inp, tar])  # (bs, 256, 256, channels*2)
+    x = tf.keras.layers.concatenate([inp, tar])
 
-    down1 = downsample(64, 4, False)(x)  # (bs, 128, 128, 64)
-    down2 = downsample(128, 4)(down1)  # (bs, 64, 64, 128)
-    down3 = downsample(256, 4)(down2)  # (bs, 32, 32, 256)
+    down1 = downsample(64, 4, False)(x)
+    down2 = downsample(128, 4)(down1)
+    down3 = downsample(256, 4)(down2)
 
-    zero_pad1 = tf.keras.layers.ZeroPadding2D()(down3)  # (bs, 34, 34, 256)
+    zero_pad1 = tf.keras.layers.ZeroPadding2D()(down3)
     conv = tf.keras.layers.Conv2D(512, 4, strides=1,
                                   kernel_initializer=initializer,
                                   use_bias=False)(
@@ -171,6 +201,12 @@ loss_object = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
 
 def discriminator_loss(disc_real_output, disc_generated_output):
+    """
+    Assemble discriminator loss
+    :param disc_real: output of dicriminator model on real images
+    :param disc_fake: output of dicriminator model on fake images
+    :return: loss combined from real and fake loss
+    """
     real_loss = loss_object(tf.ones_like(disc_real_output), disc_real_output)
 
     generated_loss = loss_object(tf.zeros_like(disc_generated_output),
@@ -182,6 +218,13 @@ def discriminator_loss(disc_real_output, disc_generated_output):
 
 
 def generator_loss(disc_generated_output, gen_output, target):
+    """
+    Assemble generator loss.
+    :param disc_fake: discriminator output on fake (generated) image
+    :param fake: generated image
+    :param target: real expected output
+    :return:
+    """
     gan_loss = loss_object(tf.ones_like(disc_generated_output),
                            disc_generated_output)
 
@@ -193,8 +236,9 @@ def generator_loss(disc_generated_output, gen_output, target):
     return total_gen_loss
 
 
-generator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-discriminator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
+generator_optimizer = tf.keras.optimizers.Adam(LEARNING_RATE, beta_1=BETA_1)
+discriminator_optimizer = tf.keras.optimizers.Adam(LEARNING_RATE,
+                                                   beta_1=BETA_1)
 
 
 def generate_images(model, test_input, tar):
@@ -240,11 +284,17 @@ def train_step(input_image, target):
     discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
                                                 discriminator.trainable_variables))
 
+    return gen_loss, disc_loss
+
 
 def train(epochs):
+    gan_loss_gen = []
+    gan_loss_dis = []
     for epoch in range(epochs):
+        N = 0
+        gen_loss, disc_loss = 0, 0
         for d, n in Batch(DAY_PATH, NIGHT_PATH):
-            # day, night = d/255, n/255
+            N += 1
             day = image_normalization_mapping(d, 0, 255, -1, 1)
             night = image_normalization_mapping(n, 0, 255, -1, 1)
 
@@ -254,18 +304,28 @@ def train(epochs):
             day = tf.expand_dims(day, 0)
             night = tf.expand_dims(night, 0)
 
-            train_step(night, day)
+            g_loss, d_loss = train_step(day, night)
+            gen_loss += g_loss
+            disc_loss += d_loss
+        print(
+            f'Epoch {epoch} discriminator loss: {gen_loss / N} generator loss: {disc_loss / N}')
+        gan_loss_gen.append(gen_loss / N)
+        gan_loss_dis.append(disc_loss / N)
+    inp1 = image_normalization_mapping(inp, 0, 255, -1, 1)
+    tar1 = image_normalization_mapping(tar, 0, 255, -1, 1)
 
-        inp1 = image_normalization_mapping(inp, 0, 255, -1, 1)
-        tar1 = image_normalization_mapping(tar, 0, 255, -1, 1)
+    inp1 = tf.convert_to_tensor(inp1, dtype='float32')
+    tar1 = tf.convert_to_tensor(tar1, dtype='float32')
 
-        inp1 = tf.convert_to_tensor(inp1, dtype='float32')
-        tar1 = tf.convert_to_tensor(tar1, dtype='float32')
+    inp1 = tf.expand_dims(inp1, 0)
+    tar1 = tf.expand_dims(tar1, 0)
 
-        inp1 = tf.expand_dims(inp1, 0)
-        tar1 = tf.expand_dims(tar1, 0)
+    generate_images(generator, inp1, tar1)
 
-        generate_images(generator, tar1, inp1)
+    plt.plot(gan_loss_gen, label='generator')
+    plt.plot(gan_loss_dis, label='discriminator')
+    plt.legend()
+    plt.show()
 
 
 train(EPOCHS)
